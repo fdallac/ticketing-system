@@ -62,8 +62,11 @@ contract ticketingSystem {
         address payable owner;
         uint amountPaid;
         uint salePrice;
+        string promoCode;
+        // flags
         bool isAvailable;
         bool isAvailableForSale;
+        bool isAvailableForPromo;
     }
     mapping (uint => _TICKET) public ticketsRegister; // list of tickets
     uint private ticketCounter; // counter of tickets
@@ -216,16 +219,20 @@ contract ticketingSystem {
         ticketsRegister[ticketCounter].isAvailable = true;
         ticketsRegister[ticketCounter].isAvailableForSale = false;
         ticketsRegister[ticketCounter].amountPaid = amountPaid;
+        ticketsRegister[ticketCounter].isAvailableForPromo = false;
+        ticketsRegister[ticketCounter].promoCode = '0';
+        // account ticket
+        concertsRegister[concertId].totalSoldTicket++;
     }
 
     function emitTicket(uint concertId, address payable receiver) public {
         // artist can emit a ticket for free
         require(msg.sender == artistsRegister[concertsRegister[concertId].artistId].owner,
                 "Only artist can emit tickets for free.");
+        require(concertsRegister[concertId].totalTickets - concertsRegister[concertId].totalSoldTicket > 0,
+                "Concert is sold out.");
         // emit ticket
         createTicket(concertId, receiver, 0); // ticketCounter is incremented here
-        // account ticket
-        concertsRegister[concertId].totalSoldTicket++;
         // emit event
         /*emit TicketEmitted(ticketCounter,
                            artistsRegister[concertsRegister[concertId].artistId].name,
@@ -237,12 +244,11 @@ contract ticketingSystem {
     function buyTicket(uint concertId) public payable {
         require(msg.value >= concertsRegister[concertId].ticketPrice,
                 "Payment refused.");
-        require(concertsRegister[concertCounter].totalTickets - concertsRegister[concertCounter].totalSoldTicket > 0,
+        require(concertsRegister[concertId].totalTickets - concertsRegister[concertId].totalSoldTicket > 0,
                 "Concert is sold out.");
         // emit ticket
         createTicket(concertId, msg.sender, concertsRegister[concertId].ticketPrice); // ticketCounter is incremented here
         // account ticket
-        concertsRegister[concertId].totalSoldTicket++;
         concertsRegister[concertId].totalMoneyCollected += msg.value;
         artistsRegister[concertsRegister[concertId].artistId].totalTicketSold++;
         // emit event
@@ -258,9 +264,9 @@ contract ticketingSystem {
         require(ticketsRegister[ticketId].owner == msg.sender,
                 "You are not the owner of this ticket.");
         require(now > concertsRegister[ticketsRegister[ticketId].concertId].concertDate - 60*60*24,
-                "There is a time and place for everything. Not now. (It's too early.)");
+                "There is a time and place for everything. Not now. (It's too early) (The reason could be an imprecision of block.timestamp, if you think so try again)");
         require(now < concertsRegister[ticketsRegister[ticketId].concertId].concertDate,
-                "There is a time and place for everything. Not now. (It's too late.)");
+                "There is a time and place for everything. Not now. (It's too late.) (The reason could be an imprecision of block.timestamp, if you think so try again)");
         require(concertsRegister[ticketsRegister[ticketId].concertId].validatedByArtist &&
                 concertsRegister[ticketsRegister[ticketId].concertId].validatedByVenue,
                 "This concert is not validated.");
@@ -291,7 +297,7 @@ contract ticketingSystem {
         require(msg.sender == artistsRegister[concertsRegister[concertId].artistId].owner,
                 "Only the artist can require the cash out");
         require(now > concertsRegister[concertId].concertDate,
-                "Concert is not started yet.");
+                "There is a time and place for everything. Not now. (It's too early) (The reason could be an imprecision of block.timestamp, if you think so try again)");
         require(concertsRegister[concertId].cashOutFlag == false,
                 "Cash out already done.");
         // pay artist
@@ -336,6 +342,31 @@ contract ticketingSystem {
         // set the ticket as no more for sale
         ticketsRegister[ticketId].isAvailableForSale = false;
     }
+
+    function distributePromoTicket(uint concertId, string memory promoCode) public {
+        // artist can distribute promo tickets
+        require(msg.sender == artistsRegister[concertsRegister[concertId].artistId].owner,
+                "Only artist can emit tickets for free.");
+        require(concertsRegister[concertId].totalTickets - concertsRegister[concertId].totalSoldTicket > 0,
+                "Concert is sold out.");
+        // create ticket and set address zero as owner
+        createTicket(concertId, address(0), 0); // ticketCounter is incremented here
+        // set promoCode
+        ticketsRegister[ticketCounter-1].promoCode = promoCode;
+        ticketsRegister[ticketCounter-1].isAvailableForPromo = true;
+    }
+
+    function redeemPromoTicket(uint ticketId, string memory promoCode) public {
+        require(keccak256(abi.encodePacked((ticketsRegister[ticketId].promoCode))) == keccak256(abi.encodePacked((promoCode))),
+                "Promo code is not valid.");
+        require(ticketsRegister[ticketId].isAvailableForPromo,
+                "This ticket is not a promo ticket.");
+        // change owner
+        ticketsRegister[ticketId].owner = msg.sender;
+        // set the ticket as no more for promo
+        ticketsRegister[ticketId].isAvailableForPromo = false;
+    }
+
 }
 
 
